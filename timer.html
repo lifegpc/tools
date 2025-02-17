@@ -33,6 +33,11 @@
             cursor: pointer;
         }
 
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .timer-name {
             font-weight: bold;
             margin-bottom: 5px;
@@ -286,10 +291,10 @@
                 <div class="timer-time">${displayTime}</div>
                 <div class="timer-controls">
                     <button class="start">${timerData.isRunning ? '暂停' : '开始'}</button>
-                    <button class="edit">编辑</button>
-                    <button class="reset">重置</button>
+                    <button class="edit" ${timerData.isRunning ? 'disabled' : ''}>编辑</button>
+                    <button class="reset" ${timerData.isRunning ? 'disabled' : ''}>重置</button>
                     <button class="history">历史</button>
-                    <button class="delete">删除</button>
+                    <button class="delete" ${timerData.isRunning ? 'disabled' : ''}>删除</button>
                 </div>
                 <div class="history-modal">
                     <div class="history-header">
@@ -508,8 +513,14 @@
                 formatTime(timerData.totalTime + (Date.now() - timerData.lastStart)) :
                 formatTime(timerData.totalTime);
                 
+            const controls = element.querySelector('.timer-controls');
             element.querySelector('.timer-time').textContent = displayTime;
-            element.querySelector('.start').textContent = timerData.isRunning ? '暂停' : '开始';
+            controls.querySelector('.start').textContent = timerData.isRunning ? '暂停' : '开始';
+            
+            // 更新按钮禁用状态
+            controls.querySelector('.edit').disabled = timerData.isRunning;
+            controls.querySelector('.reset').disabled = timerData.isRunning;
+            controls.querySelector('.delete').disabled = timerData.isRunning;
         }
 
         // 格式化时间显示
