@@ -2,104 +2,304 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>多计时器管理</title>
     <style>
+        :root {
+            /* 默认亮色主题 */
+            --primary-color: #2196F3;
+            --hover-color: #1976D2;
+            --background: #f5f5f5;
+            --surface: #ffffff;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --border-color: #e0e0e0;
+        }
+
+        [data-theme="dark"] {
+            /* 暗色主题 */
+            --primary-color: #64B5F6;
+            --hover-color: #42A5F5;
+            --background: #121212;
+            --surface: #1E1E1E;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --border-color: #373737;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --primary-color: #64B5F6;
+                --hover-color: #42A5F5;
+                --background: #121212;
+                --surface: #1E1E1E;
+                --text-primary: #FFFFFF;
+                --text-secondary: #CCCCCC;
+                --border-color: #373737;
+            }
+        }
+
+        /* 其他样式保持不变... */
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            margin: 0;
             padding: 20px;
+            background: var(--background);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--text-primary);
+            margin: 0 0 20px;
+            font-size: 24px;
         }
 
         #timerContainer {
-            margin-top: 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
 
         .timer {
-            border: 1px solid #ccc;
-            padding: 15px;
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 16px;
             margin: 10px 0;
-            border-radius: 5px;
-            background: #f9f9f9;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s, background-color 0.3s;
+            border: 1px solid var(--border-color);
         }
 
-        .timer-controls {
-            margin-top: 10px;
-        }
-
-        button {
-            padding: 5px 10px;
-            margin-right: 5px;
-            cursor: pointer;
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        .timer:hover {
+            transform: translateY(-2px);
         }
 
         .timer-name {
-            font-weight: bold;
-            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: var(--text-primary);
         }
 
         .timer-time {
-            font-size: 24px;
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            color: var(--primary-color);
+            margin: 12px 0;
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            background: var(--primary-color);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:hover {
+            background: var(--hover-color);
+        }
+
+        button:disabled {
+            background: #BDBDBD;
+            opacity: 0.7;
+            cursor: not-allowed;
         }
 
         .history-modal {
-            display: none;
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
             padding: 20px;
-            border: 1px solid #ccc;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-            max-height: 80vh;
             overflow-y: auto;
         }
 
-        .history-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px;
-            border-bottom: 1px solid #eee;
+        .history-content {
+            background: var(--surface);
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
         }
 
         .history-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
         }
 
         .import-export {
-            margin: 10px 0;
+            max-width: 800px;
+            margin: 0 auto 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .theme-switcher {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .theme-switcher button {
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .timer {
+                padding: 12px;
+            }
+
+            .timer-time {
+                font-size: 24px;
+            }
+
+            button {
+                font-size: 13px;
+                padding: 12px 8px;
+                min-width: auto;
+            }
+
+            .history-content {
+                padding: 15px;
+            }
+
+            .history-item {
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .import-export button {
+                flex: 1 1 100%;
+            }
+
+            .theme-switcher {
+                position: static;
+                width: 100%;
+                margin-top: 10px;
+            }
+
+            .theme-switcher button {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .timer-controls {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
     <h1>多计时器管理</h1>
     <div class="import-export">
-        <button onclick="createNewTimer()">+ 新建计时器</button>
-        <button onclick="exportData()">导出数据</button>
-        <button onclick="document.getElementById('fileInput').click()">导入数据</button>
+        <button onclick="createNewTimer()">+ 新建</button>
+        <button onclick="exportData()">导出</button>
+        <button onclick="document.getElementById('fileInput').click()">导入</button>
         <input type="file" id="fileInput" hidden accept=".json" onchange="importData(this.files)">
+    </div>
+    <div class="theme-switcher">
+        <button id="themeButton" onclick="toggleTheme()">切换主题</button>
     </div>
     <div id="timerContainer"></div>
 
     <script>
+        // 主题管理
+        function getSavedTheme() {
+            return localStorage.getItem('timers.theme') || 'system';
+        }
+
+        function saveTheme(theme) {
+            localStorage.setItem('timers.theme', theme);
+        }
+
+        function applyTheme() {
+            const savedTheme = getSavedTheme();
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'system') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+            
+            const I18N = {
+                'system': '自动',
+                'dark': '夜间',
+                'light': '亮色',
+            }
+            document.getElementById('themeButton').textContent = `切换主题（${I18N[savedTheme]}）`;
+        }
+
+        function toggleTheme() {
+            const currentTheme = getSavedTheme();
+            const newTheme = currentTheme === 'system' ? 'light' :
+                           currentTheme === 'light' ? 'dark' : 'system';
+            
+            saveTheme(newTheme);
+            applyTheme();
+        }
+
+        // 监听系统主题变化
+        window.matchMedia('(prefers-color-scheme: dark)').addListener(applyTheme);
+
+        // 初始化主题
+        applyTheme();
+
+        /* 以下是原有的数据库和计时器代码，保持不变 */
         let db;
         const DB_NAME = 'timersDB';
         const STORE_NAME = 'timers';
         const HISTORY_STORE = 'timerHistory';
 
-        // 初始化数据库
         function initDB() {
             const request = indexedDB.open(DB_NAME, 3);
 
@@ -129,7 +329,6 @@
             };
         }
 
-        // 导出数据
         async function exportData() {
             const data = {
                 version: 1,
@@ -148,7 +347,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // 导入数据
         async function importData(files) {
             if (!files.length) return;
             
@@ -162,11 +360,9 @@
                         throw new Error('无效的导入文件格式');
                     }
 
-                    // 清除现有数据
                     await clearStore(STORE_NAME);
                     await clearStore(HISTORY_STORE);
 
-                    // 导入新数据
                     await bulkImport(STORE_NAME, data.timers);
                     await bulkImport(HISTORY_STORE, data.history);
 
@@ -180,7 +376,6 @@
             reader.readAsText(file);
         }
 
-        // 获取存储所有数据
         function getAllFromStore(storeName) {
             return new Promise((resolve, reject) => {
                 const tx = db.transaction(storeName, 'readonly');
@@ -192,7 +387,6 @@
             });
         }
 
-        // 批量导入数据
         function bulkImport(storeName, items) {
             return new Promise((resolve, reject) => {
                 const tx = db.transaction(storeName, 'readwrite');
@@ -205,7 +399,6 @@
             });
         }
 
-        // 清空存储
         function clearStore(storeName) {
             return new Promise((resolve, reject) => {
                 const tx = db.transaction(storeName, 'readwrite');
@@ -216,7 +409,6 @@
             });
         }
 
-        // 加载所有计时器
         function loadAllTimers() {
             const tx = db.transaction(STORE_NAME, 'readonly');
             const store = tx.objectStore(STORE_NAME);
@@ -229,7 +421,6 @@
             };
         }
 
-        // 创建新计时器
         function createNewTimer() {
             const name = prompt('请输入计时器名称:', '新计时器');
             if (!name) return;
@@ -247,7 +438,6 @@
             });
         }
 
-        // 保存计时器到数据库
         function saveTimer(timerData, callback) {
             const tx = db.transaction(STORE_NAME, 'readwrite');
             const store = tx.objectStore(STORE_NAME);
@@ -256,7 +446,6 @@
             request.onsuccess = callback;
         }
 
-        // 删除计时器及其历史记录
         function deleteTimer(timerId, element) {
             if (!confirm('确定要删除此计时器及其所有历史记录吗？')) return;
 
@@ -278,7 +467,6 @@
             tx.oncomplete = () => element.remove();
         }
 
-        // 创建计时器DOM元素
         function createTimerElement(timerData) {
             const timerDiv = document.createElement('div');
             timerDiv.className = 'timer';
@@ -296,21 +484,13 @@
                     <button class="history">历史</button>
                     <button class="delete" ${timerData.isRunning ? 'disabled' : ''}>删除</button>
                 </div>
-                <div class="history-modal">
-                    <div class="history-header">
-                        <h3>${timerData.name} 的历史记录</h3>
-                        <button onclick="this.parentElement.parentElement.style.display='none'">关闭</button>
-                    </div>
-                    <div class="history-list"></div>
-                    <button class="delete-all-history" onclick="deleteAllHistory(${timerData.id}, this.parentElement)">删除所有历史</button>
-                </div>
             `;
 
             const controls = timerDiv.querySelector('.timer-controls');
             controls.querySelector('.start').addEventListener('click', () => toggleTimer(timerData, timerDiv));
             controls.querySelector('.edit').addEventListener('click', () => editTimer(timerData, timerDiv));
             controls.querySelector('.reset').addEventListener('click', () => resetTimer(timerData, timerDiv));
-            controls.querySelector('.history').addEventListener('click', () => showHistory(timerData.id, timerDiv));
+            controls.querySelector('.history').addEventListener('click', () => showHistory(timerData.id));
             controls.querySelector('.delete').addEventListener('click', () => deleteTimer(timerData.id, timerDiv));
 
             if (timerData.isRunning) {
@@ -320,7 +500,6 @@
             document.getElementById('timerContainer').appendChild(timerDiv);
         }
 
-        // 编辑计时器时间
         function editTimer(timerData, element) {
             const input = prompt('请输入新的时间（HH:MM:SS）:', formatTime(timerData.totalTime));
             if (input === null) return;
@@ -349,7 +528,6 @@
             saveTimer(timerData);
         }
 
-        // 解析时间输入
         function parseTimeInput(input) {
             const parts = input.split(':').map(part => {
                 const num = parseInt(part, 10);
@@ -364,9 +542,21 @@
             return milliseconds;
         }
 
-        // 显示历史记录
-        function showHistory(timerId, element) {
-            const modal = element.querySelector('.history-modal');
+        function showHistory(timerId) {
+            const modal = document.createElement('div');
+            modal.className = 'history-modal';
+            
+            modal.innerHTML = `
+                <div class="history-content">
+                    <div class="history-header">
+                        <h3>历史记录</h3>
+                        <button onclick="this.closest('.history-modal').remove()">关闭</button>
+                    </div>
+                    <div class="history-list"></div>
+                    <button class="delete-all-history" onclick="deleteAllHistory(${timerId}, this.parentElement)">删除所有历史</button>
+                </div>
+            `;
+
             const list = modal.querySelector('.history-list');
             
             getHistory(timerId, (history) => {
@@ -378,15 +568,15 @@
                           record.operationType === 'reset' ? '⏹️ 重置' :
                           '✏️ 编辑'} - 
                         时间: ${formatTime(record.displayTime)}</span>
-                        <button onclick="deleteHistoryRecord(${record.id}, ${timerId}, this.parentElement)">删除</button>
+                        <button onclick="this.closest('.history-item').remove(); deleteHistoryRecord(${record.id})">删除</button>
                     </div>
                 `).join('');
-                
-                modal.style.display = 'block';
             });
+
+            document.body.appendChild(modal);
+            modal.style.display = 'block';
         }
 
-        // 获取历史记录
         function getHistory(timerId, callback) {
             const tx = db.transaction(HISTORY_STORE, 'readonly');
             const store = tx.objectStore(HISTORY_STORE);
@@ -396,7 +586,6 @@
             request.onsuccess = () => callback(request.result.reverse());
         }
 
-        // 添加历史记录
         function addHistoryRecord(timerId, operationType, displayTime) {
             const tx = db.transaction(HISTORY_STORE, 'readwrite');
             const store = tx.objectStore(HISTORY_STORE);
@@ -409,17 +598,12 @@
             });
         }
 
-        // 删除单条历史记录
-        function deleteHistoryRecord(recordId, timerId, element) {
-            if (!confirm('确定要删除此条历史记录吗？')) return;
-            
+        function deleteHistoryRecord(recordId) {
             const tx = db.transaction(HISTORY_STORE, 'readwrite');
             tx.objectStore(HISTORY_STORE).delete(recordId);
-            element.remove();
         }
 
-        // 删除全部历史记录
-        function deleteAllHistory(timerId, modal) {
+        function deleteAllHistory(timerId, element) {
             if (!confirm('确定要删除此计时器的全部历史记录吗？')) return;
             
             const tx = db.transaction(HISTORY_STORE, 'readwrite');
@@ -436,11 +620,10 @@
             };
 
             tx.oncomplete = () => {
-                modal.querySelector('.history-list').innerHTML = '';
+                element.querySelector('.history-list').innerHTML = '';
             };
         }
 
-        // 切换计时器状态
         function toggleTimer(timerData, element) {
             const wasRunning = timerData.isRunning;
             timerData.isRunning = !timerData.isRunning;
@@ -465,7 +648,6 @@
             saveTimer(timerData);
         }
 
-        // 启动计时器
         function startTimer(timerData, element) {
             if (element._timerInterval) {
                 clearInterval(element._timerInterval);
@@ -482,7 +664,6 @@
             element._timerInterval = setInterval(update, 1000);
         }
 
-        // 重置计时器
         function resetTimer(timerData, element) {
             if (!confirm('确定要重置计时器吗？这将会清零当前计时并记录历史！')) return;
 
@@ -507,7 +688,6 @@
             saveTimer(timerData);
         }
 
-        // 更新显示
         function updateTimerDisplay(timerData, element) {
             const displayTime = timerData.isRunning ? 
                 formatTime(timerData.totalTime + (Date.now() - timerData.lastStart)) :
@@ -517,13 +697,11 @@
             element.querySelector('.timer-time').textContent = displayTime;
             controls.querySelector('.start').textContent = timerData.isRunning ? '暂停' : '开始';
             
-            // 更新按钮禁用状态
             controls.querySelector('.edit').disabled = timerData.isRunning;
             controls.querySelector('.reset').disabled = timerData.isRunning;
             controls.querySelector('.delete').disabled = timerData.isRunning;
         }
 
-        // 格式化时间显示
         function formatTime(milliseconds) {
             const totalSeconds = Math.floor(milliseconds / 1000);
             const hours = Math.floor(totalSeconds / 3600);
@@ -535,7 +713,6 @@
                 .join(':');
         }
 
-        // 初始化
         initDB();
     </script>
 </body>
