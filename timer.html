@@ -353,17 +353,17 @@
                 });
             },
 
-            alert(message) {
+            alert(message, title="提示") {
                 return this.create({
-                    title: '提示',
+                    title,
                     content: message,
                     buttons: [{ text: '确定', value: true, primary: true }]
                 });
             },
 
-            async confirm(message) {
+            async confirm(message, title="确认") {
                 return (await this.create({
-                    title: '确认',
+                    title,
                     content: message,
                     buttons: [
                         { text: '取消', value: false },
@@ -504,10 +504,10 @@
                     await bulkImport(STORE_NAME, data.timers);
                     await bulkImport(HISTORY_STORE, data.history);
 
-                    await dialog.alert('导入成功！');
+                    await dialog.alert('导入成功！', '通知');
                     window.location.reload();
                 } catch (error) {
-                    alert(`导入失败: ${error.message}`);
+                    await dialog.alert(`导入失败: ${error.message}`, '错误');
                 }
             };
             
@@ -644,7 +644,7 @@
 
             const newTime = parseTimeInput(input);
             if (newTime === null || isNaN(newTime)) {
-                alert('时间格式无效，请使用HH:MM:SS格式');
+                await dialog.alert('时间格式无效，请使用HH:MM:SS格式', '错误');
                 return;
             }
 
