@@ -53,6 +53,56 @@
             transition: background-color 0.3s, color 0.3s;
         }
 
+        /* 新增对话框样式 */
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .dialog {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 300px;
+            max-width: 90%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid var(--border-color);
+        }
+
+        .dialog-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .dialog-content {
+            margin-bottom: 20px;
+        }
+
+        .dialog-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text-primary);
+            margin-top: 10px;
+        }
+
+        .dialog-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
         h1 {
             text-align: center;
             color: var(--text-primary);
@@ -239,6 +289,10 @@
     </style>
 </head>
 <body>
+    <!-- 新增对话框容器 -->
+    <div id="dialogContainer"></div>
+
+    <!-- 原有界面结构保持不变... -->
     <h1>多计时器管理</h1>
     <div class="import-export">
         <button onclick="createNewTimer()">+ 新建</button>
@@ -252,6 +306,90 @@
     <div id="timerContainer"></div>
 
     <script>
+        // 新增对话框组件
+        const dialog = {
+            create(options) {
+                return new Promise(resolve => {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'dialog-overlay';
+                    
+                    const dialog = document.createElement('div');
+                    dialog.className = 'dialog';
+                    
+                    dialog.innerHTML = `
+                        <div class="dialog-title">${options.title || ''}</div>
+                        <div class="dialog-content">
+                            ${options.content || ''}
+                            ${options.input ? `<input type="${options.inputType || 'text'}" class="dialog-input" value="${options.inputValue || ''}">` : ''}
+                        </div>
+                        <div class="dialog-buttons"></div>
+                    `;
+        
+                    const buttonContainer = dialog.querySelector('.dialog-buttons');
+                    options.buttons.forEach(btn => {
+                        const button = document.createElement('button');
+                        button.textContent = btn.text;
+                        button.style.cssText = btn.primary ? 
+                            'background: var(--primary-color)' : 
+                            'background: var(--surface); color: var(--text-primary)';
+                        
+                        button.addEventListener('click', () => {
+                            // 在移除前获取输入值
+                            const inputValue = options.input 
+                                ? dialog.querySelector('.dialog-input').value 
+                                : null;
+                            overlay.remove();
+                            resolve({
+                                buttonValue: btn.value,
+                                inputValue: inputValue
+                            });
+                        });
+                        
+                        buttonContainer.appendChild(button);
+                    });
+                    
+                    overlay.appendChild(dialog);
+                    document.getElementById('dialogContainer').appendChild(overlay);
+                });
+            },
+
+            alert(message) {
+                return this.create({
+                    title: '提示',
+                    content: message,
+                    buttons: [{ text: '确定', value: true, primary: true }]
+                });
+            },
+
+            async confirm(message) {
+                return (await this.create({
+                    title: '确认',
+                    content: message,
+                    buttons: [
+                        { text: '取消', value: false },
+                        { text: '确定', value: true, primary: true }
+                    ]
+                })).buttonValue;
+            },
+
+            prompt(title, defaultValue = '') {
+                return new Promise(resolve => {
+                    this.create({
+                        title,
+                        content: '',
+                        input: true,
+                        inputValue: defaultValue,
+                        buttons: [
+                            { text: '取消', value: false },
+                            { text: '确定', value: true, primary: true }
+                        ]
+                    }).then(({ buttonValue, inputValue }) => {
+                        resolve(buttonValue ? inputValue : null);
+                    });
+                });
+            }
+        };
+
         // 主题管理
         function getSavedTheme() {
             return localStorage.getItem('timers.theme') || 'system';
@@ -366,7 +504,7 @@
                     await bulkImport(STORE_NAME, data.timers);
                     await bulkImport(HISTORY_STORE, data.history);
 
-                    alert('导入成功！');
+                    await dialog.alert('导入成功！');
                     window.location.reload();
                 } catch (error) {
                     alert(`导入失败: ${error.message}`);
@@ -421,8 +559,8 @@
             };
         }
 
-        function createNewTimer() {
-            const name = prompt('请输入计时器名称:', '新计时器');
+        async function createNewTimer() {
+            const name = await dialog.prompt('请输入计时器名称:', '新计时器');
             if (!name) return;
 
             const timerData = {
@@ -446,8 +584,8 @@
             request.onsuccess = callback;
         }
 
-        function deleteTimer(timerId, element) {
-            if (!confirm('确定要删除此计时器及其所有历史记录吗？')) return;
+        async function deleteTimer(timerId, element) {
+            if (!(await dialog.confirm('确定要删除此计时器及其所有历史记录吗？'))) return;
 
             const tx = db.transaction([STORE_NAME, HISTORY_STORE], 'readwrite');
             tx.objectStore(STORE_NAME).delete(timerId);
@@ -500,8 +638,8 @@
             document.getElementById('timerContainer').appendChild(timerDiv);
         }
 
-        function editTimer(timerData, element) {
-            const input = prompt('请输入新的时间（HH:MM:SS）:', formatTime(timerData.totalTime));
+        async function editTimer(timerData, element) {
+            const input = await dialog.prompt('请输入新的时间（HH:MM:SS）:', formatTime(timerData.totalTime));
             if (input === null) return;
 
             const newTime = parseTimeInput(input);
@@ -603,8 +741,8 @@
             tx.objectStore(HISTORY_STORE).delete(recordId);
         }
 
-        function deleteAllHistory(timerId, element) {
-            if (!confirm('确定要删除此计时器的全部历史记录吗？')) return;
+        async function deleteAllHistory(timerId, element) {
+            if (!(await dialog.confirm('确定要删除此计时器的全部历史记录吗？'))) return;
             
             const tx = db.transaction(HISTORY_STORE, 'readwrite');
             const store = tx.objectStore(HISTORY_STORE);
@@ -664,8 +802,8 @@
             element._timerInterval = setInterval(update, 1000);
         }
 
-        function resetTimer(timerData, element) {
-            if (!confirm('确定要重置计时器吗？这将会清零当前计时并记录历史！')) return;
+        async function resetTimer(timerData, element) {
+            if (!(await dialog.confirm('确定要重置计时器吗？这将会清零当前计时并记录历史！'))) return;
 
             let displayTime = timerData.totalTime;
             if (timerData.isRunning) {
