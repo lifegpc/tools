@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>多计时器管理</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        #timerContainer {
+            margin-top: 20px;
+        }
+
+        .timer {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+
+        .timer-controls {
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+
+        .timer-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .timer-time {
+            font-size: 24px;
+            font-family: monospace;
+        }
+
+        .history-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .import-export {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>多计时器管理</h1>
+    <div class="import-export">
+        <button onclick="createNewTimer()">+ 新建计时器</button>
+        <button onclick="exportData()">导出数据</button>
+        <button onclick="document.getElementById('fileInput').click()">导入数据</button>
+        <input type="file" id="fileInput" hidden accept=".json" onchange="importData(this.files)">
+    </div>
+    <div id="timerContainer"></div>
+
+    <script>
+        let db;
+        const DB_NAME = 'timersDB';
+        const STORE_NAME = 'timers';
+        const HISTORY_STORE = 'timerHistory';
+
+        // 初始化数据库
+        function initDB() {
+            const request = indexedDB.open(DB_NAME, 3);
+
+            request.onupgradeneeded = function(e) {
+                db = e.target.result;
+                
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                }
+                
+                if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+                    const historyStore = db.createObjectStore(HISTORY_STORE, {
+                        keyPath: 'id',
+                        autoIncrement: true
+                    });
+                    historyStore.createIndex('timerId', 'timerId', { unique: false });
+                }
+            };
+
+            request.onsuccess = function(e) {
+                db = e.target.result;
+                loadAllTimers();
+            };
+
+            request.onerror = function(e) {
+                console.error('数据库错误:', e.target.error);
+            };
+        }
+
+        // 导出数据
+        async function exportData() {
+            const data = {
+                version: 1,
+                timers: await getAllFromStore(STORE_NAME),
+                history: await getAllFromStore(HISTORY_STORE)
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `timers_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 导入数据
+        async function importData(files) {
+            if (!files.length) return;
+            
+            const file = files[0];
+            const reader = new FileReader();
+            
+            reader.onload = async function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.timers || !data.history) {
+                        throw new Error('无效的导入文件格式');
+                    }
+
+                    // 清除现有数据
+                    await clearStore(STORE_NAME);
+                    await clearStore(HISTORY_STORE);
+
+                    // 导入新数据
+                    await bulkImport(STORE_NAME, data.timers);
+                    await bulkImport(HISTORY_STORE, data.history);
+
+                    alert('导入成功！');
+                    window.location.reload();
+                } catch (error) {
+                    alert(`导入失败: ${error.message}`);
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+
+        // 获取存储所有数据
+        function getAllFromStore(storeName) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                const request = store.getAll();
+                
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // 批量导入数据
+        function bulkImport(storeName, items) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                
+                items.forEach(item => store.put(item));
+                
+                tx.oncomplete = resolve;
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // 清空存储
+        function clearStore(storeName) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                tx.objectStore(storeName).clear();
+                
+                tx.oncomplete = resolve;
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // 加载所有计时器
+        function loadAllTimers() {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.getAll();
+
+            request.onsuccess = function() {
+                request.result.forEach(timerData => {
+                    createTimerElement(timerData);
+                });
+            };
+        }
+
+        // 创建新计时器
+        function createNewTimer() {
+            const name = prompt('请输入计时器名称:', '新计时器');
+            if (!name) return;
+
+            const timerData = {
+                id: Date.now(),
+                name: name,
+                totalTime: 0,
+                isRunning: false,
+                lastStart: null
+            };
+
+            saveTimer(timerData, function() {
+                createTimerElement(timerData);
+            });
+        }
+
+        // 保存计时器到数据库
+        function saveTimer(timerData, callback) {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.put(timerData);
+
+            request.onsuccess = callback;
+        }
+
+        // 删除计时器及其历史记录
+        function deleteTimer(timerId, element) {
+            if (!confirm('确定要删除此计时器及其所有历史记录吗？')) return;
+
+            const tx = db.transaction([STORE_NAME, HISTORY_STORE], 'readwrite');
+            tx.objectStore(STORE_NAME).delete(timerId);
+            
+            const historyStore = tx.objectStore(HISTORY_STORE);
+            const index = historyStore.index('timerId');
+            const request = index.openCursor(IDBKeyRange.only(timerId));
+            
+            request.onsuccess = function(e) {
+                const cursor = e.target.result;
+                if (cursor) {
+                    historyStore.delete(cursor.primaryKey);
+                    cursor.continue();
+                }
+            };
+
+            tx.oncomplete = () => element.remove();
+        }
+
+        // 创建计时器DOM元素
+        function createTimerElement(timerData) {
+            const timerDiv = document.createElement('div');
+            timerDiv.className = 'timer';
+            timerDiv.id = 'timer-' + timerData.id;
+
+            const displayTime = formatTime(timerData.totalTime);
+
+            timerDiv.innerHTML = `
+                <div class="timer-name">${timerData.name}</div>
+                <div class="timer-time">${displayTime}</div>
+                <div class="timer-controls">
+                    <button class="start">${timerData.isRunning ? '暂停' : '开始'}</button>
+                    <button class="edit">编辑</button>
+                    <button class="reset">重置</button>
+                    <button class="history">历史</button>
+                    <button class="delete">删除</button>
+                </div>
+                <div class="history-modal">
+                    <div class="history-header">
+                        <h3>${timerData.name} 的历史记录</h3>
+                        <button onclick="this.parentElement.parentElement.style.display='none'">关闭</button>
+                    </div>
+                    <div class="history-list"></div>
+                    <button class="delete-all-history" onclick="deleteAllHistory(${timerData.id}, this.parentElement)">删除所有历史</button>
+                </div>
+            `;
+
+            const controls = timerDiv.querySelector('.timer-controls');
+            controls.querySelector('.start').addEventListener('click', () => toggleTimer(timerData, timerDiv));
+            controls.querySelector('.edit').addEventListener('click', () => editTimer(timerData, timerDiv));
+            controls.querySelector('.reset').addEventListener('click', () => resetTimer(timerData, timerDiv));
+            controls.querySelector('.history').addEventListener('click', () => showHistory(timerData.id, timerDiv));
+            controls.querySelector('.delete').addEventListener('click', () => deleteTimer(timerData.id, timerDiv));
+
+            if (timerData.isRunning) {
+                startTimer(timerData, timerDiv);
+            }
+
+            document.getElementById('timerContainer').appendChild(timerDiv);
+        }
+
+        // 编辑计时器时间
+        function editTimer(timerData, element) {
+            const input = prompt('请输入新的时间（HH:MM:SS）:', formatTime(timerData.totalTime));
+            if (input === null) return;
+
+            const newTime = parseTimeInput(input);
+            if (newTime === null || isNaN(newTime)) {
+                alert('时间格式无效，请使用HH:MM:SS格式');
+                return;
+            }
+
+            if (timerData.isRunning) {
+                const elapsed = Date.now() - timerData.lastStart;
+                timerData.totalTime += elapsed;
+                timerData.isRunning = false;
+                timerData.lastStart = null;
+                clearInterval(element._timerInterval);
+                element._timerInterval = null;
+            }
+
+            const originalTime = timerData.totalTime;
+            timerData.totalTime = newTime;
+
+            addHistoryRecord(timerData.id, 'edit', newTime);
+
+            updateTimerDisplay(timerData, element);
+            saveTimer(timerData);
+        }
+
+        // 解析时间输入
+        function parseTimeInput(input) {
+            const parts = input.split(':').map(part => {
+                const num = parseInt(part, 10);
+                return isNaN(num) ? 0 : num;
+            }).reverse();
+
+            let milliseconds = 0;
+            if (parts[0]) milliseconds += parts[0] * 1000;
+            if (parts[1]) milliseconds += parts[1] * 60000;
+            if (parts[2]) milliseconds += parts[2] * 3600000;
+
+            return milliseconds;
+        }
+
+        // 显示历史记录
+        function showHistory(timerId, element) {
+            const modal = element.querySelector('.history-modal');
+            const list = modal.querySelector('.history-list');
+            
+            getHistory(timerId, (history) => {
+                list.innerHTML = history.map(record => `
+                    <div class="history-item">
+                        <span>[${new Date(record.timestamp).toLocaleString()}] 
+                        ${record.operationType === 'start' ? '▶️ 开始' : 
+                          record.operationType === 'pause' ? '⏸️ 暂停' : 
+                          record.operationType === 'reset' ? '⏹️ 重置' :
+                          '✏️ 编辑'} - 
+                        时间: ${formatTime(record.displayTime)}</span>
+                        <button onclick="deleteHistoryRecord(${record.id}, ${timerId}, this.parentElement)">删除</button>
+                    </div>
+                `).join('');
+                
+                modal.style.display = 'block';
+            });
+        }
+
+        // 获取历史记录
+        function getHistory(timerId, callback) {
+            const tx = db.transaction(HISTORY_STORE, 'readonly');
+            const store = tx.objectStore(HISTORY_STORE);
+            const index = store.index('timerId');
+            const request = index.getAll(IDBKeyRange.only(timerId));
+
+            request.onsuccess = () => callback(request.result.reverse());
+        }
+
+        // 添加历史记录
+        function addHistoryRecord(timerId, operationType, displayTime) {
+            const tx = db.transaction(HISTORY_STORE, 'readwrite');
+            const store = tx.objectStore(HISTORY_STORE);
+            
+            store.add({
+                timerId: timerId,
+                operationType: operationType,
+                timestamp: Date.now(),
+                displayTime: displayTime
+            });
+        }
+
+        // 删除单条历史记录
+        function deleteHistoryRecord(recordId, timerId, element) {
+            if (!confirm('确定要删除此条历史记录吗？')) return;
+            
+            const tx = db.transaction(HISTORY_STORE, 'readwrite');
+            tx.objectStore(HISTORY_STORE).delete(recordId);
+            element.remove();
+        }
+
+        // 删除全部历史记录
+        function deleteAllHistory(timerId, modal) {
+            if (!confirm('确定要删除此计时器的全部历史记录吗？')) return;
+            
+            const tx = db.transaction(HISTORY_STORE, 'readwrite');
+            const store = tx.objectStore(HISTORY_STORE);
+            const index = store.index('timerId');
+            const request = index.openCursor(IDBKeyRange.only(timerId));
+            
+            request.onsuccess = function(e) {
+                const cursor = e.target.result;
+                if (cursor) {
+                    store.delete(cursor.primaryKey);
+                    cursor.continue();
+                }
+            };
+
+            tx.oncomplete = () => {
+                modal.querySelector('.history-list').innerHTML = '';
+            };
+        }
+
+        // 切换计时器状态
+        function toggleTimer(timerData, element) {
+            const wasRunning = timerData.isRunning;
+            timerData.isRunning = !timerData.isRunning;
+            
+            if (timerData.isRunning) {
+                addHistoryRecord(timerData.id, 'start', timerData.totalTime);
+                timerData.lastStart = Date.now();
+                startTimer(timerData, element);
+            } else {
+                const elapsed = Date.now() - timerData.lastStart;
+                const displayTime = timerData.totalTime + elapsed;
+                addHistoryRecord(timerData.id, 'pause', displayTime);
+                timerData.totalTime = displayTime;
+                
+                if (element._timerInterval) {
+                    clearInterval(element._timerInterval);
+                    element._timerInterval = null;
+                }
+            }
+            
+            updateTimerDisplay(timerData, element);
+            saveTimer(timerData);
+        }
+
+        // 启动计时器
+        function startTimer(timerData, element) {
+            if (element._timerInterval) {
+                clearInterval(element._timerInterval);
+            }
+            
+            const timeDisplay = element.querySelector('.timer-time');
+            
+            function update() {
+                const currentTime = timerData.totalTime + (Date.now() - timerData.lastStart);
+                timeDisplay.textContent = formatTime(currentTime);
+            }
+            
+            update();
+            element._timerInterval = setInterval(update, 1000);
+        }
+
+        // 重置计时器
+        function resetTimer(timerData, element) {
+            if (!confirm('确定要重置计时器吗？这将会清零当前计时并记录历史！')) return;
+
+            let displayTime = timerData.totalTime;
+            if (timerData.isRunning) {
+                const elapsed = Date.now() - timerData.lastStart;
+                displayTime += elapsed;
+            }
+            
+            addHistoryRecord(timerData.id, 'reset', displayTime);
+            
+            timerData.totalTime = 0;
+            timerData.isRunning = false;
+            timerData.lastStart = null;
+            
+            if (element._timerInterval) {
+                clearInterval(element._timerInterval);
+                element._timerInterval = null;
+            }
+            
+            updateTimerDisplay(timerData, element);
+            saveTimer(timerData);
+        }
+
+        // 更新显示
+        function updateTimerDisplay(timerData, element) {
+            const displayTime = timerData.isRunning ? 
+                formatTime(timerData.totalTime + (Date.now() - timerData.lastStart)) :
+                formatTime(timerData.totalTime);
+                
+            element.querySelector('.timer-time').textContent = displayTime;
+            element.querySelector('.start').textContent = timerData.isRunning ? '暂停' : '开始';
+        }
+
+        // 格式化时间显示
+        function formatTime(milliseconds) {
+            const totalSeconds = Math.floor(milliseconds / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return [hours, minutes, seconds]
+                .map(v => v.toString().padStart(2, '0'))
+                .join(':');
+        }
+
+        // 初始化
+        initDB();
+    </script>
+</body>
+</html>
