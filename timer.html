@@ -206,6 +206,19 @@
             margin-bottom: 20px;
         }
 
+        .history-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .history-controls .pagination {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         .history-item {
             display: flex;
             justify-content: space-between;
@@ -690,31 +703,142 @@
                         <h3>历史记录</h3>
                         <button onclick="this.closest('.history-modal').remove()">关闭</button>
                     </div>
-                    <button class="delete-all-history" onclick="deleteAllHistory(${timerId}, this.parentElement)">删除所有历史</button>
+                    <div class="history-controls">
+                        <div class="items-per-page">
+                            <select>
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                            </select>
+                            <span> 条/页</span>
+                        </div>
+                        <div class="pagination">
+                            <button class="prev-page" disabled>上一页</button>
+                            <span style="margin: 0 5px;">第</span>
+                            <input type="number" class="page-input" style="width: 60px; text-align: center;" min="1">
+                            <span class="page-info"></span>
+                            <button class="next-page" disabled>下一页</button>
+                        </div>
+                    </div>
+                    <button class="delete-all-history">删除所有历史</button>
                     <div class="history-list"></div>
                 </div>
             `;
 
+            let currentPage = 0;
+            let historyData = [];
+
             const list = modal.querySelector('.history-list');
-            
-            getHistory(timerId, (history) => {
-                list.innerHTML = history.map(record => `
-                    <div class="history-item">
+            const itemsPerPageSelect = modal.querySelector('select');
+            const prevButton = modal.querySelector('.prev-page');
+            const nextButton = modal.querySelector('.next-page');
+            const pageInfo = modal.querySelector('.page-info');
+            const pageInput = modal.querySelector('.page-input');
+            const deleteAllButton = modal.querySelector('.delete-all-history');
+
+            function renderHistoryPage() {
+                const itemsPerPage = parseInt(itemsPerPageSelect.value);
+                const totalPages = Math.ceil(historyData.length / itemsPerPage);
+
+                if (currentPage >= totalPages) {
+                    currentPage = Math.max(0, totalPages - 1);
+                }
+                if (currentPage < 0) {
+                    currentPage = 0;
+                }
+
+                const start = currentPage * itemsPerPage;
+                const end = start + itemsPerPage;
+                const pageItems = historyData.slice(start, end);
+
+                list.innerHTML = pageItems.map(record => `
+                    <div class="history-item" data-record-id="${record.id}">
                         <span>[${new Date(record.timestamp).toLocaleString()}] 
                         ${record.operationType === 'start' ? '▶️ 开始' : 
                           record.operationType === 'pause' ? '⏸️ 暂停' : 
                           record.operationType === 'reset' ? '⏹️ 重置' :
                           '✏️ 编辑'} - 
                         时间: ${formatTime(record.displayTime)}</span>
-                        <button onclick="dialog.confirm('确定要删除这条历史记录吗？').then(confirmed => {
-                            if (confirmed) {
-                                this.closest('.history-item').remove(); 
-                                deleteHistoryRecord(${record.id});
-                            }
-                        })">删除</button>
+                        <button class="delete-item">删除</button>
                     </div>
                 `).join('');
+                
+                list.querySelectorAll('.delete-item').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        const recordId = parseInt(e.target.closest('.history-item').dataset.recordId);
+                        if (await dialog.confirm('确定要删除这条历史记录吗？')) {
+                            await deleteHistoryRecord(recordId);
+                            refreshHistory();
+                        }
+                    });
+                });
+
+                if (totalPages > 0) {
+                    pageInfo.textContent = ` / ${totalPages} 页`;
+                    pageInput.value = currentPage + 1;
+                    pageInput.max = totalPages;
+                    pageInput.disabled = false;
+                } else {
+                    pageInfo.textContent = ` / 0 页`;
+                    pageInput.value = 0;
+                    pageInput.disabled = true;
+                }
+
+                prevButton.disabled = currentPage === 0;
+                nextButton.disabled = currentPage >= totalPages - 1;
+                deleteAllButton.disabled = historyData.length === 0;
+            }
+
+            function refreshHistory() {
+                getHistory(timerId, (history) => {
+                    historyData = history;
+                    renderHistoryPage();
+                });
+            }
+
+            itemsPerPageSelect.addEventListener('change', () => {
+                currentPage = 0;
+                renderHistoryPage();
             });
+
+            prevButton.addEventListener('click', () => {
+                if (currentPage > 0) {
+                    currentPage--;
+                    renderHistoryPage();
+                }
+            });
+
+            nextButton.addEventListener('click', () => {
+                const itemsPerPage = parseInt(itemsPerPageSelect.value);
+                const totalPages = Math.ceil(historyData.length / itemsPerPage);
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    renderHistoryPage();
+                }
+            });
+
+            pageInput.addEventListener('change', () => {
+                const itemsPerPage = parseInt(itemsPerPageSelect.value);
+                const totalPages = Math.ceil(historyData.length / itemsPerPage);
+                let targetPage = parseInt(pageInput.value, 10);
+
+                if (isNaN(targetPage) || targetPage < 1) {
+                    targetPage = 1;
+                }
+                if (targetPage > totalPages && totalPages > 0) {
+                    targetPage = totalPages;
+                }
+                
+                currentPage = targetPage - 1;
+                renderHistoryPage();
+            });
+
+            deleteAllButton.addEventListener('click', () => {
+                deleteAllHistory(timerId, refreshHistory);
+            });
+            
+            refreshHistory();
 
             document.body.appendChild(modal);
             modal.style.display = 'block';
@@ -742,11 +866,15 @@
         }
 
         function deleteHistoryRecord(recordId) {
-            const tx = db.transaction(HISTORY_STORE, 'readwrite');
-            tx.objectStore(HISTORY_STORE).delete(recordId);
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(HISTORY_STORE, 'readwrite');
+                tx.objectStore(HISTORY_STORE).delete(recordId);
+                tx.oncomplete = resolve;
+                tx.onerror = (e) => reject(e.target.error);
+            });
         }
 
-        async function deleteAllHistory(timerId, element) {
+        async function deleteAllHistory(timerId, callback) {
             if (!(await dialog.confirm('确定要删除此计时器的全部历史记录吗？'))) return;
             
             const tx = db.transaction(HISTORY_STORE, 'readwrite');
@@ -763,7 +891,7 @@
             };
 
             tx.oncomplete = () => {
-                element.querySelector('.history-list').innerHTML = '';
+                if (callback) callback();
             };
         }
 
