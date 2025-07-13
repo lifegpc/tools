@@ -705,12 +705,7 @@
                     </div>
                     <div class="history-controls">
                         <div class="items-per-page">
-                            <select>
-                                <option value="5">5</option>
-                                <option value="10" selected>10</option>
-                                <option value="20">20</option>
-                                <option value="50">50</option>
-                            </select>
+                            <select></select>
                             <span> 条/页</span>
                         </div>
                         <div class="pagination">
@@ -736,6 +731,11 @@
             const pageInfo = modal.querySelector('.page-info');
             const pageInput = modal.querySelector('.page-input');
             const deleteAllButton = modal.querySelector('.delete-all-history');
+            const HISTORY_PER_PAGE_KEY = 'timers.historyPerPage';
+            const perPageOptions = [5, 10, 20, 50, 100];
+            let savedPerPage = parseInt(localStorage.getItem(HISTORY_PER_PAGE_KEY), 10);
+            if (!perPageOptions.includes(savedPerPage)) savedPerPage = 10;
+            itemsPerPageSelect.innerHTML = perPageOptions.map(v => `<option value="${v}"${v===savedPerPage? ' selected' : ''}>${v}</option>`).join('');
 
             function renderHistoryPage() {
                 const itemsPerPage = parseInt(itemsPerPageSelect.value);
@@ -799,6 +799,7 @@
 
             itemsPerPageSelect.addEventListener('change', () => {
                 currentPage = 0;
+                localStorage.setItem(HISTORY_PER_PAGE_KEY, itemsPerPageSelect.value);
                 renderHistoryPage();
             });
 
